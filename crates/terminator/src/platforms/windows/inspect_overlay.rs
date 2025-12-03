@@ -236,8 +236,8 @@ fn create_inspect_overlay_window(
             ));
         }
 
-        // Make black transparent (color key)
-        SetLayeredWindowAttributes(hwnd, COLORREF(0x000000), 255, LWA_COLORKEY).map_err(|e| {
+        // Make magenta transparent (color key)
+        SetLayeredWindowAttributes(hwnd, COLORREF(0xFF00FF), 255, LWA_COLORKEY).map_err(|e| {
             AutomationError::PlatformError(format!("SetLayeredWindowAttributes failed: {e}"))
         })?;
 
@@ -277,8 +277,8 @@ fn format_label(elem: &InspectElement, mode: OverlayDisplayMode) -> Option<Strin
         OverlayDisplayMode::IndexRole => Some(format!("[{}:{}]", elem.index, elem.role)),
         OverlayDisplayMode::Name => {
             if let Some(ref name) = elem.name {
-                let truncated = if name.len() > 15 {
-                    format!("{}...", &name[..12])
+                let truncated = if name.chars().count() > 15 {
+                    format!("{}...", name.chars().take(12).collect::<String>())
                 } else {
                     name.clone()
                 };
@@ -289,8 +289,8 @@ fn format_label(elem: &InspectElement, mode: OverlayDisplayMode) -> Option<Strin
         }
         OverlayDisplayMode::IndexName => {
             if let Some(ref name) = elem.name {
-                let truncated = if name.len() > 15 {
-                    format!("{}...", &name[..12])
+                let truncated = if name.chars().count() > 15 {
+                    format!("{}...", name.chars().take(12).collect::<String>())
                 } else {
                     name.clone()
                 };
@@ -301,8 +301,8 @@ fn format_label(elem: &InspectElement, mode: OverlayDisplayMode) -> Option<Strin
         }
         OverlayDisplayMode::Full => {
             if let Some(ref name) = elem.name {
-                let truncated = if name.len() > 12 {
-                    format!("{}...", &name[..9])
+                let truncated = if name.chars().count() > 12 {
+                    format!("{}...", name.chars().take(9).collect::<String>())
                 } else {
                     name.clone()
                 };
@@ -326,10 +326,10 @@ fn draw_inspect_overlay(hwnd: HWND) {
         let mut rect = RECT::default();
         let _ = GetClientRect(hwnd, &mut rect);
 
-        // Fill background with black (will be transparent due to color key)
-        let black_brush = CreateSolidBrush(COLORREF(0x000000));
-        FillRect(hdc, &rect, black_brush);
-        let _ = DeleteObject(black_brush.into());
+        // Fill background with magenta (will be transparent due to color key)
+        let magenta_brush = CreateSolidBrush(COLORREF(0xFF00FF));
+        FillRect(hdc, &rect, magenta_brush);
+        let _ = DeleteObject(magenta_brush.into());
 
         // Get stored elements, offset, and display mode
         let elements = get_elements_storage().lock().ok();
@@ -351,22 +351,22 @@ fn draw_inspect_overlay(hwnd: HWND) {
             );
             let old_brush = SelectObject(hdc, null_brush);
 
-            // Create font for labels (11px, bold)
+            // Create font for labels (12px, normal weight, no anti-aliasing)
             let font = CreateFontW(
-                11, // Height
+                12, // Height
                 0,
                 0,
                 0,
-                700, // Bold weight
+                400, // Normal weight
                 0,
                 0,
                 0,
                 windows::Win32::Graphics::Gdi::FONT_CHARSET(1),
                 windows::Win32::Graphics::Gdi::FONT_OUTPUT_PRECISION(0),
                 windows::Win32::Graphics::Gdi::FONT_CLIP_PRECISION(0),
-                windows::Win32::Graphics::Gdi::FONT_QUALITY(0),
+                windows::Win32::Graphics::Gdi::FONT_QUALITY(3), // NONANTIALIASED_QUALITY
                 0,
-                PCWSTR::null(),
+                w!("Consolas"),
             );
             let old_font = SelectObject(hdc, HGDIOBJ(font.0));
 

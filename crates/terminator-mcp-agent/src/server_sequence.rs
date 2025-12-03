@@ -935,7 +935,7 @@ impl DesktopWrapper {
         let mut sequence_items = Vec::new();
         let empty_steps = Vec::new();
         let steps = args.steps.as_ref().unwrap_or(&empty_steps);
-        for step in steps {
+        for (step_idx, step) in steps.iter().enumerate() {
             let item = if let Some(tool_name) = &step.tool_name {
                 // Parse delay from either delay_ms or human-readable delay field
                 let delay_ms = if let Some(delay_str) = &step.delay {
@@ -978,9 +978,27 @@ impl DesktopWrapper {
                 };
                 SequenceItem::Group { tool_group }
             } else {
+                let is_in_range = step_idx >= start_from_index && step_idx <= end_at_index;
+                let range_info = if is_in_range {
+                    "This step IS in your execution range."
+                } else {
+                    "This step is OUTSIDE your execution range but still blocks execution."
+                };
                 return Err(McpError::invalid_params(
-                    "Each step must have either tool_name (for single tools) or group_name (for groups)",
-                    Some(json!({"invalid_step": step})),
+                    format!(
+                        "Step {} is invalid: missing tool_name or group_name. {}",
+                        step_idx + 1, range_info
+                    ),
+                    Some(json!({
+                        "error_type": "invalid_step",
+                        "step_index": step_idx + 1,
+                        "step_id": step.id,
+                        "is_in_execution_range": is_in_range,
+                        "execution_range": {
+                            "start": start_from_index + 1,
+                            "end": end_at_index + 1
+                        }
+                    })),
                 ));
             };
             sequence_items.push(item);
@@ -992,7 +1010,8 @@ impl DesktopWrapper {
                 "Adding {} troubleshooting steps to workflow (accessible only via fallback_id)",
                 troubleshooting.len()
             );
-            for step in troubleshooting {
+            for (local_idx, step) in troubleshooting.iter().enumerate() {
+                let global_step_idx = main_steps_len + local_idx;
                 let item = if let Some(tool_name) = &step.tool_name {
                     // Parse delay from either delay_ms or human-readable delay field
                     let delay_ms = if let Some(delay_str) = &step.delay {
@@ -1035,9 +1054,28 @@ impl DesktopWrapper {
                     };
                     SequenceItem::Group { tool_group }
                 } else {
+                    let is_in_range = global_step_idx >= start_from_index && global_step_idx <= end_at_index;
+                    let range_info = if is_in_range {
+                        "This step IS in your execution range."
+                    } else {
+                        "This step is OUTSIDE your execution range but still blocks execution."
+                    };
                     return Err(McpError::invalid_params(
-                        "Each troubleshooting step must have either tool_name (for single tools) or group_name (for groups)",
-                        Some(json!({"invalid_step": step})),
+                        format!(
+                            "Troubleshooting step {} (global index {}) is invalid: missing tool_name or group_name. {}",
+                            local_idx + 1, global_step_idx + 1, range_info
+                        ),
+                        Some(json!({
+                            "error_type": "invalid_step",
+                            "step_index": global_step_idx + 1,
+                            "troubleshooting_index": local_idx + 1,
+                            "step_id": step.id,
+                            "is_in_execution_range": is_in_range,
+                            "execution_range": {
+                                "start": start_from_index + 1,
+                                "end": end_at_index + 1
+                            }
+                        })),
                     ));
                 };
                 sequence_items.push(item);
@@ -1426,15 +1464,12 @@ impl DesktopWrapper {
                                 );
                             }
 
-                            // Only inject accumulated env if explicitly in verbose/debug mode
-                            if args.include_detailed_results.unwrap_or(false) {
-                                // Add accumulated env from execution context as special key
-                                if let Some(accumulated_env) = execution_context.get("env") {
-                                    env_obj.insert(
-                                        "_accumulated_env".to_string(),
-                                        accumulated_env.clone(),
-                                    );
-                                }
+                            // Always inject accumulated env so scripts can access previous step results
+                            if let Some(accumulated_env) = execution_context.get("env") {
+                                env_obj.insert(
+                                    "_accumulated_env".to_string(),
+                                    accumulated_env.clone(),
+                                );
                             }
 
                             // Update the arguments
